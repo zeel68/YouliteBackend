@@ -30,7 +30,7 @@ app.use('/api/v1/users', userRouter)
 
 
 
-export { app }
+
 app.get('/',(req,res) =>{
     res.send("hello world")
 })
@@ -46,3 +46,4 @@ connectDB()
   .catch((err) => {
     console.log("MONGO db connection failed!!! ", err);
   });
+export default app
