@@ -1,13 +1,19 @@
-import { Router } from "express";
-import  {loginUser,logoutUser,refreshAccessToken,registerUser} from "../controller/user.controller.js"
-import { verifyJWT } from "../middelware/auth.middelware.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
+// route/user.route.js
+import { loginUser, logoutUser, refreshAccessToken, registerUser, getUserProfile } from '../controller/user.controller.js';
+import { verifyJWT } from '../middelware/auth.middelware.js';
 
-const userRouter = Router()
-userRouter.route("/login").post(loginUser);
-userRouter.route("/register").post(registerUser)
-userRouter.route("/logout").post(verifyJWT,logoutUser)
-userRouter.route("/refreshToken").post(refreshAccessToken)
+export default async function userRoutes(fastify, options) {
+    // POST /login
+    fastify.post('/login', loginUser);
 
+    // POST /register
+    fastify.post('/register', registerUser);
 
-export default userRouter
+    // POST /logout with JWT verification preHandler
+    fastify.post('/logout', { preHandler: verifyJWT }, logoutUser);
+
+    // POST /refreshToken
+    fastify.post('/refreshToken', refreshAccessToken);
+
+    fastify.get('/profile/:user_id', { preHandler: verifyJWT }, getUserProfile);
+}

@@ -4,7 +4,6 @@ const paymentSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
     },
     order: {
         type: mongoose.Schema.Types.ObjectId,
@@ -15,14 +14,14 @@ const paymentSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
-    paymentMethod: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'PaymentMethod',
-        required: true
-    },
+    // paymentMethod: {
+    //     type: mongoose.Schema.Types.ObjectId,
+    //     ref: 'PaymentMethod',
+    //     required: true
+    // },
     status: {
         type: String,
-        enum: ['pending', 'completed', 'failed'],
+        enum: ['pending', 'completed', 'failed', 'refunded', 'cancelled', 'processing', 'paid'],
         default: 'pending'
     },
     createdAt: {

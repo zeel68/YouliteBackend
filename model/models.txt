@@ -1,0 +1,1144 @@
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
+
+// Cart Item Schema
+const cartItemSchema = new Schema({
+    product_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Product',
+        required: true,
+        index: true
+    },
+    variant_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'ProductVariant'
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        default: 1,
+        min: [1, 'Quantity cannot be less than 1']
+    },
+    price_at_addition: {  // Recommended to store price snapshot
+        type: Number,
+        required: true
+    },
+    added_at: {
+        type: Date,
+        default: Date.now
+    }
+}, {
+    timestamps: {
+        updatedAt: 'updated_at',
+        createdAt: false // We're using added_at instead
+    },
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for product details
+cartItemSchema.virtual('product_details', {
+    ref: 'Product',
+    localField: 'product_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for variant details
+cartItemSchema.virtual('variant_details', {
+    ref: 'ProductVariant',
+    localField: 'variant_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Cart Schema
+const cartSchema = new Schema({
+    user_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+        unique: true,
+        index: true
+    },
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true,
+        index: true
+    },
+    items: [cartItemSchema], // Embedded cart items
+    expires_at: {  // Recommended for cart expiration
+        type: Date,
+        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+    }
+}, {
+    timestamps: {
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
+    },
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for user details
+cartSchema.virtual('user_details', {
+    ref: 'User',
+    localField: 'user_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for store details
+cartSchema.virtual('store_details', {
+    ref: 'Store',
+    localField: 'store_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Calculate cart total (virtual)
+cartSchema.virtual('total').get(function () {
+    return this.items.reduce((sum, item) => {
+        return sum + (item.price_at_addition * item.quantity);
+    }, 0);
+});
+
+// Calculate items count (virtual)
+cartSchema.virtual('items_count').get(function () {
+    return this.items.reduce((count, item) => count + item.quantity, 0);
+});
+
+// Indexes
+cartItemSchema.index({ cart_id: 1 });
+cartItemSchema.index({ product_id: 1 });
+cartItemSchema.index({ variant_id: 1 });
+
+// Middleware to validate references
+cartSchema.pre('save', async function (next) {
+    if (this.isModified('user_id')) {
+        const userExists = await mongoose.model('User').exists({ _id: this.user_id });
+        if (!userExists) throw new Error('Specified user does not exist');
+    }
+
+    if (this.isModified('store_id')) {
+        const storeExists = await mongoose.model('Store').exists({ _id: this.store_id });
+        if (!storeExists) throw new Error('Specified store does not exist');
+    }
+
+    // Validate items before saving
+    for (const item of this.items) {
+        const productExists = await mongoose.model('Product').exists({ _id: item.product_id });
+        if (!productExists) throw new Error(`Product ${item.product_id} does not exist`);
+
+        if (item.variant_id) {
+            const variantExists = await mongoose.model('ProductVariant').exists({
+                _id: item.variant_id,
+                product_id: item.product_id
+            });
+            if (!variantExists) throw new Error(`Variant ${item.variant_id} does not exist for product ${item.product_id}`);
+        }
+    }
+
+    next();
+});
+
+// // Update product price when adding to cart
+// cartSchema.methods.addItem = async function (productId, variantId, quantity = 1) {
+//     const Product = mongoose.model('Product');
+//     const product = await Product.findById(productId);
+
+//     if (!product) throw new Error('Product not found');
+
+//     const price = variantId
+//         ? product.variants.id(variantId).price
+//         : product.price;
+
+//     this.items.push({
+//         product_id: productId,
+//         variant_id: variantId,
+//         quantity,
+//         price_at_addition: price
+//     });
+
+//     return this.save();
+// };
+
+// Models
+const Cart = mongoose.model('Cart', cartSchema);
+const CartItem = mongoose.model('CartItem', cartItemSchema);
+
+module.exports = { Cart, CartItem };
+
+
+
+
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
+
+const categorySchema = new Schema({
+    name: {
+        type: String,
+        required: [true, 'Category name is required'],
+        unique: [true, 'Category name must be unique'],
+        trim: true,
+        minlength: [2, 'Category name must be at least 2 characters'],
+        maxlength: [100, 'Category name cannot exceed 100 characters'],
+        index: true
+    },
+    image_url: {
+        type: String,
+    },
+
+    attribute_schema: {
+        type: Schema.Types.Mixed,
+        default: {}
+    },
+    // Adding timestamps which are generally useful
+    created_at: {
+        type: Date,
+        default: Date.now
+    },
+    updated_at: {
+        type: Date,
+        default: Date.now
+    }
+}, {
+    virtuals: true,
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for stores count
+categorySchema.virtual('stores_count', {
+    ref: 'Store',
+    localField: '_id',
+    foreignField: 'category_id',
+    count: true
+});
+
+// Virtual for tags count
+categorySchema.virtual('tags_count', {
+    ref: 'Tag',
+    localField: '_id',
+    foreignField: 'category_id',
+    count: true
+});
+
+// Virtual for stores (if you need the actual stores)
+categorySchema.virtual('stores', {
+    ref: 'Store',
+    localField: '_id',
+    foreignField: 'category_id'
+});
+
+// Virtual for tags (if you need the actual tags)
+categorySchema.virtual('tags', {
+    ref: 'Tag',
+    localField: '_id',
+    foreignField: 'category_id'
+});
+
+// Middleware to update the updated_at timestamp
+categorySchema.pre('save', function (next) {
+    this.updated_at = Date.now();
+    next();
+});
+
+// Middleware to prevent deletion if referenced by stores
+categorySchema.pre('deleteOne', { document: true }, async function (next) {
+    const storeCount = await mongoose.model('Store').countDocuments({ category_id: this._id });
+    if (storeCount > 0) {
+        throw new Error('Cannot delete category referenced by stores');
+    }
+    next();
+});
+
+
+
+export const Category = mongoose.model('Category', categorySchema);
+
+import mongoose from "mongoose";
+const { Schema } = mongoose;
+
+
+const heroSectionSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true
+    },
+    image_url: {
+        type: String,
+        required: true
+    },
+    nav_links: {
+        type: String,
+    }
+}, {
+    timestamps: true,
+    versionKey: false
+});
+
+
+const HeroSection = mongoose.model('HeroSection', heroSectionSchema);
+export { HeroSection };
+
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+// Order Item Schema
+const orderItemSchema = new Schema({
+    product_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Product',
+        required: true,
+        index: true
+    },
+    variant_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'ProductVariant',
+        index: true
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        min: [1, 'Quantity must be at least 1']
+    },
+    price: {
+        type: Number,
+        required: true,
+        min: [0, 'Price cannot be negative']
+    },
+    attributes: {
+        type: Schema.Types.Mixed,
+        default: {}
+    },
+    product_name: {  // Snapshot of product name at time of order
+        type: String,
+        required: true
+    },
+    variant_name: {  // Snapshot of variant name at time of order
+        type: String
+    },
+    image_url: {  // Snapshot of product image at time of order
+        type: String
+    }
+}, {
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for current product details
+orderItemSchema.virtual('product_details', {
+    ref: 'Product',
+    localField: 'product_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for current variant details
+orderItemSchema.virtual('variant_details', {
+    ref: 'ProductVariant',
+    localField: 'variant_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Order Schema
+const orderSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true,
+        index: true
+    },
+    user_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+        index: true
+    },
+    order_number: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true
+    },
+    total: {
+        type: Number,
+        required: true,
+        min: [0, 'Total cannot be negative']
+    },
+    status: {
+        type: String,
+        required: true,
+        default: 'pending',
+        index: true,
+        enum: {
+            values: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+            message: 'Invalid order status'
+        }
+    },
+    shipping_address: {
+        type: {
+            street: { type: String, required: true },
+            city: { type: String, required: true },
+            state: { type: String, required: true },
+            country: { type: String, required: true },
+            postal_code: { type: String, required: true },
+            phone: { type: String, required: true }
+        },
+        required: true
+    },
+    billing_address: {
+        type: {
+            street: String,
+            city: String,
+            state: String,
+            country: String,
+            postal_code: String
+        },
+        default: null
+    },
+    items: [orderItemSchema], // Embedded order items
+    payment_status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed', 'refunded'],
+        default: 'pending'
+    },
+    shipping_method: String,
+    tracking_number: String,
+    notes: String
+}, {
+    timestamps: {
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
+    },
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for store details
+orderSchema.virtual('store_details', {
+    ref: 'Store',
+    localField: 'store_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for user details
+orderSchema.virtual('user_details', {
+    ref: 'User',
+    localField: 'user_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for payment details
+orderSchema.virtual('payment_info', {
+    ref: 'Payment',
+    localField: '_id',
+    foreignField: 'order_id',
+    justOne: true
+});
+
+// Calculate total items in order (virtual)
+orderSchema.virtual('items_count').get(function () {
+    return this.items.reduce((count, item) => count + item.quantity, 0);
+});
+
+// Indexes
+orderSchema.index({ store_id: 1, status: 1 });
+orderSchema.index({ user_id: 1, created_at: -1 });
+orderSchema.index({ 'shipping_address.country': 1 });
+orderSchema.index({ created_at: -1 });
+
+// Middleware to validate references
+orderSchema.pre('save', async function (next) {
+    // Validate store exists
+    const storeExists = await mongoose.model('Store').exists({ _id: this.store_id });
+    if (!storeExists) throw new Error('Specified store does not exist');
+
+    // Validate user exists
+    const userExists = await mongoose.model('User').exists({ _id: this.user_id });
+    if (!userExists) throw new Error('Specified user does not exist');
+
+    // Validate order items
+    for (const item of this.items) {
+        const productExists = await mongoose.model('Product').exists({ _id: item.product_id });
+        if (!productExists) throw new Error(`Product ${item.product_id} does not exist`);
+
+        if (item.variant_id) {
+            const variantExists = await mongoose.model('ProductVariant').exists({
+                _id: item.variant_id,
+                product_id: item.product_id
+            });
+            if (!variantExists) throw new Error(`Variant ${item.variant_id} does not exist for product ${item.product_id}`);
+        }
+    }
+
+    next();
+});
+
+// Generate order number if not provided
+orderSchema.pre('save', function (next) {
+    if (!this.order_number) {
+        this.order_number = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    }
+    next();
+});
+
+// Static method to get orders by status
+orderSchema.statics.findByStatus = function (status, options = {}) {
+    return this.find({ status })
+        .sort({ created_at: -1 })
+        .limit(options.limit || 100)
+        .skip(options.skip || 0)
+        .populate(options.populate || []);
+};
+
+// Model
+const Order = mongoose.model('Order', orderSchema);
+const OrderItem = mongoose.model('OrderItem', orderItemSchema);
+
+export { Order, OrderItem };
+
+// Payment.js
+import mongoose from "mongoose";
+const paymentSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    order: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Order',
+        required: true
+    },
+    amount: {
+        type: Number,
+        required: true
+    },
+    paymentMethod: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'PaymentMethod',
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'completed', 'failed'],
+        default: 'pending'
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+export const Payment = mongoose.model('Payment', paymentSchema);
+
+
+import mongoose from "mongoose";
+
+const productSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, "product name can't be empty"],
+  },
+  description: String,
+  price: {
+    type: Number,
+    required: [true, "product price can't be null or zero"],
+  },
+  category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ProductCategory',
+    required: [true, "product category can't be null"],
+  },
+  seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  reviews: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      rating: {
+        type: Number,
+        default: 0
+      },
+      comment: String,
+      date: {
+        type: Date,
+        default: Date.now
+      }
+    }
+  ],
+  attributes: {
+    color: {
+      type: [
+        {
+          colorOption: {
+            type: String,
+          },
+          isSelected: {
+            type: Boolean,
+            default: false
+          }
+        }
+      ]
+    },
+    size: {
+      type: [
+        {
+          colorOption: {
+            type: Number,
+          },
+          isSelected: {
+            type: Boolean,
+            default: false
+          }
+        }
+      ]
+    },
+
+  },
+  stock: {
+    quantity: {
+      type: Number,
+      default: 0,
+      required: [true, "Quantity is required"]
+    },
+    reserved: {
+      type: Number,
+      default: 0
+    }
+  },
+  images: [String],
+  tags: [String],
+  ratings: {
+    average: {
+      type: Number,
+      default: 0
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  }
+});
+productSchema.pre('save', async function (next) {
+  try {
+    // Calculate average rating
+    const totalRatings = this.reviews.length;
+    const totalRatingSum = this.reviews.reduce((sum, review) => sum + review.rating, 0);
+    this.ratings.average = totalRatings > 0 ? totalRatingSum / totalRatings : 0;
+
+    // Update total ratings count
+    this.ratings.count = totalRatings;
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Post-save middleware to update category's product count
+productSchema.post('save', async function (doc, next) {
+  try {
+
+    const Category = mongoose.model('Category');
+    await Category.findByIdAndUpdate(doc.category, { $inc: { productCount: 1 } });
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+export const Product = mongoose.model('Product', productSchema);
+
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
+
+const roleSchema = new Schema({
+    name: {
+        type: String,
+        required: [true, 'Role name is required'],
+        unique: [true, 'Role name must be unique'],
+        trim: true,
+        minlength: [2, 'Role name must be at least 2 characters'],
+        maxlength: [50, 'Role name cannot exceed 50 characters']
+    }
+}, {
+    timestamps: false,
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+
+export const Role = mongoose.model('Role', roleSchema);
+
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
+
+// Store Theme Schema
+const storeThemeSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true,
+        unique: true
+    },
+    primary_color: {
+        type: String,
+        default: "#4f46e5"
+    },
+    secondary_color: {
+        type: String,
+        default: "#f43f5e"
+    },
+    font_family: {
+        type: String,
+        default: "'Inter', sans-serif"
+    },
+    custom_css: String
+}, {
+    timestamps: false,
+    versionKey: false
+});
+
+// Store Attribute Schema
+const storeAttributeSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true
+    },
+    attribute_name: {
+        type: String,
+        required: true
+    },
+    attribute_value: {
+        type: String,
+        required: true
+    }
+}, {
+    timestamps: false,
+    versionKey: false
+});
+
+// Store Feature Schema
+const storeFeatureSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true
+    },
+    feature_name: {
+        type: String,
+        required: true
+    }
+}, {
+    timestamps: false,
+    versionKey: false
+});
+
+// Store Schema
+const storeSchema = new Schema({
+    name: {
+        type: String,
+        required: true,
+        index: true
+    },
+    domain: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true
+    },
+    category_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Category',
+        required: true
+    },
+    config: {
+        type: Schema.Types.Mixed,
+        default: {}
+    },
+    is_active: {
+        type: Boolean,
+        default: true,
+        index: true
+    },
+    // Embedded documents for better performance
+    features: [{
+        feature_name: String
+    }],
+    attributes: [{
+        attribute_name: String,
+        attribute_value: String
+    }],
+    theme: {
+        type: {
+            primary_color: {
+                type: String,
+                default: "#4f46e5"
+            },
+            secondary_color: {
+                type: String,
+                default: "#f43f5e"
+            },
+            font_family: {
+                type: String,
+                default: "'Inter', sans-serif"
+            },
+            custom_css: String
+        },
+        default: {}
+    }
+}, {
+    timestamps: {
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
+    },
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual for category details
+storeSchema.virtual('category_details', {
+    ref: 'Category',
+    localField: 'category_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Virtual for products count
+storeSchema.virtual('products_count', {
+    ref: 'Product',
+    localField: '_id',
+    foreignField: 'store_id',
+    count: true
+});
+
+// Virtual for orders count
+storeSchema.virtual('orders_count', {
+    ref: 'Order',
+    localField: '_id',
+    foreignField: 'store_id',
+    count: true
+});
+
+// Virtual for users count
+storeSchema.virtual('users_count', {
+    ref: 'User',
+    localField: '_id',
+    foreignField: 'store_id',
+    count: true
+});
+
+// Indexes
+storeSchema.index({ name: 1 }); // Simple index on name
+storeSchema.index({ domain: 1 }, { unique: true }); // Unique index on domain
+storeSchema.index({ is_active: 1 }); // Index on is_active
+storeSchema.index({ category_id: 1 }); // Index on category_id
+storeSchema.index({ 'features.feature_name': 1 }); // Index on feature names
+storeSchema.index({ 'attributes.attribute_name': 1, 'attributes.attribute_value': 1 }); // Compound index on attributes
+
+// Middleware to validate category exists
+storeSchema.pre('save', async function (next) {
+    if (this.isModified('category_id')) {
+        const categoryExists = await mongoose.model('Category').exists({ _id: this.category_id });
+        if (!categoryExists) {
+            throw new Error('Specified category does not exist');
+        }
+    }
+    next();
+});
+
+// Models
+const Store = mongoose.model('Store', storeSchema);
+const StoreFeature = mongoose.model('StoreFeature', storeFeatureSchema);
+const StoreAttribute = mongoose.model('StoreAttribute', storeAttributeSchema);
+const StoreTheme = mongoose.model('StoreTheme', storeThemeSchema);
+
+export {
+    Store,
+    StoreFeature,
+    StoreAttribute,
+    StoreTheme
+}
+
+import mongoose from "mongoose";
+const Schema = mongoose.Schema;
+
+
+// Store Category Schema
+const productCategorySchema = new Schema({
+    name: {
+        type: String,
+        required: [true, 'Category name is required'],
+    },
+    image_url: {
+        type: String,
+        default: ''
+    },
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: true,
+        index: true
+    },
+}, {
+    timestamps: {
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
+    },
+})
+
+export const StoreCategory = mongoose.model('ProductCategory', productCategorySchema);
+
+
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
+import validator from 'validator';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+// Role Schema
+
+
+// User Schema
+const userSchema = new Schema({
+    store_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Store',
+        required: [true, 'Store reference is required'],
+        index: true
+    },
+    name: {
+        type: String,
+        required: [true, 'User name is required'],
+        trim: true,
+        minlength: [2, 'Name must be at least 2 characters'],
+        maxlength: [100, 'Name cannot exceed 100 characters']
+    },
+    email: {
+        type: String,
+        required: [true, 'Email is required'],
+        unique: [true, 'Email already exists'],
+        index: true,
+        trim: true,
+        lowercase: true,
+        validate: {
+            validator: (value) => validator.isEmail(value),
+            message: 'Please provide a valid email address'
+        }
+    },
+    phone_number: {
+        type: String,
+        required: [true, 'Phone number is required'],
+        unique: [true, 'Phone number already exists'],
+        index: true,
+        trim: true,
+        minlength: [10, 'Phone number must be at least 10 characters'],
+    },
+    password: {
+        type: String,
+        required: [true, 'Password hash is required'],
+        select: false // Never return this in queries by default
+    },
+    email_verified: {
+        type: Boolean,
+        default: false
+    },
+    phone_verified: {
+        type: Boolean,
+        default: false
+    },
+    last_login: {
+        type: Date,
+        default: null
+    },
+    role_id: {
+        type: Schema.Types.ObjectId,
+        ref: 'Role',
+        default: "6861734f5f118d3ee1451327",
+        required: [true, 'Role reference is required']
+    },
+    profile_url: {
+        type: String,
+        trim: true,
+        validate: {
+            validator: (value) => {
+                if (!value) return true; // Optional field
+                return validator.isURL(value, {
+                    protocols: ['http', 'https'],
+                    require_protocol: true
+                });
+            },
+            message: 'Profile URL must be a valid HTTP/HTTPS URL'
+        }
+    },
+    address: {
+        type: String,
+        trim: true,
+        maxlength: [500, 'Address cannot exceed 500 characters']
+    },
+    is_active: {
+        type: Boolean,
+        default: true
+    },
+    access_token: {
+        type: String,
+        select: false
+    },
+    refresh_token: {
+        type: String,
+        select: false
+    },
+    cart: {
+        type: Schema.Types.ObjectId,
+        ref: 'Cart'
+    }
+}, {
+    timestamps: {
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
+    },
+    versionKey: false,
+    toJSON: {
+        virtuals: true,
+        transform: function (doc, ret) {
+            delete ret.password_hash;
+            delete ret.access_token;
+            delete ret.refresh_token;
+            return ret;
+        }
+    },
+    toObject: {
+        virtuals: true,
+        transform: function (doc, ret) {
+            delete ret.password_hash;
+            delete ret.access_token;
+            delete ret.refresh_token;
+            return ret;
+        }
+    }
+});
+
+// Virtual for user's role name
+userSchema.virtual('role_name', {
+    ref: 'Role',
+    localField: 'role_id',
+    foreignField: '_id',
+    justOne: true,
+    options: { select: 'name' }
+});
+
+// Virtual for store details
+userSchema.virtual('store_details', {
+    ref: 'Store',
+    localField: 'store_id',
+    foreignField: '_id',
+    justOne: true
+});
+
+// Indexes
+userSchema.index({ store_id: 1 });
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ phone_number: 1 }, { unique: true });
+
+// Middleware to hash password before saving
+userSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+
+    this.password = await bcrypt.hash(this.password, 10)
+    next()
+})
+// Middleware to validate role_id exists
+userSchema.pre('save', async function (next) {
+    if (this.isModified('role_id')) {
+        const roleExists = await mongoose.model('Role').exists({ _id: this.role_id });
+        if (!roleExists) {
+            throw new Error('Specified role does not exist');
+        }
+    }
+    next();
+});
+
+// Middleware to validate store_id exists
+userSchema.pre('save', async function (next) {
+    if (this.isModified('store_id')) {
+        const storeExists = await mongoose.model('Store').exists({ _id: this.store_id });
+        if (!storeExists) {
+            throw new Error('Specified store does not exist');
+        }
+    }
+    next();
+});
+
+// Static method for user registration validation
+userSchema.statics.validateRegistration = function (userData) {
+    return new Promise((resolve, reject) => {
+        const user = new this(userData);
+        user.validate((err) => {
+            if (err) {
+                const errors = {};
+                Object.keys(err.errors).forEach((key) => {
+                    errors[key] = err.errors[key].message;
+                });
+                reject({ errors, message: 'User validation failed' });
+            } else {
+                resolve(user);
+            }
+        });
+    });
+};
+
+userSchema.methods.isPasswordCorrect = async function (password) {
+    console.log(password, this.password);
+
+    return await bcrypt.compare(password, this.password)
+}
+
+userSchema.methods.generateAccessToken = function () {
+    return jwt.sign(
+        {
+            _id: this._id,
+            email: this.email,
+            username: this.username,
+
+        },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+        }
+    )
+}
+userSchema.methods.generateRefreshToken = function () {
+    return jwt.sign(
+        {
+            _id: this._id,
+
+        },
+        process.env.REFRESH_TOKEN_SECRET,
+        {
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+        }
+    )
+}
+
+export const User = mongoose.model("User", userSchema)
+
+

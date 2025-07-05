@@ -1,1 +1,1 @@
-export const DB_NAME = "WebBuilder"
+export const DB_NAME = "WebBizz";

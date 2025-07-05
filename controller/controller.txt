@@ -1,0 +1,602 @@
+import { Category } from "../model/category.Model.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
+
+// 1. Add Category
+const addCategory = async (request, reply) => {
+    const { category_name, img_url } = request.body;
+
+    if (!category_name?.trim()) {
+        return reply.code(400).send(new ApiResponse(400, {}, "Category name is required"));
+    }
+
+    try {
+        const category = await Category.create({
+            name: category_name,
+            image_url: img_url || "",
+            attribute_schema: {}
+        });
+
+        return reply.code(201).send(new ApiResponse(201, category, "Category added successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while adding the category"));
+    }
+};
+
+// 2. Get All Categories
+const getAllCategories = async (request, reply) => {
+    try {
+        const categories = await Category.find({});
+        if (!categories.length) {
+            return reply.code(404).send(new ApiResponse(404, [], "No categories found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, categories, "Categories fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching categories"));
+    }
+};
+
+// 3. Get Category by ID
+const getCategoryById = async (request, reply) => {
+    const { category_id } = request.params;
+
+    try {
+        const category = await Category.findById(category_id)
+            .populate("stores")
+        // .populate("tags");
+        if (!category) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, category, "Category fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching the category"));
+    }
+};
+
+// 4. Update Category
+const updateCategory = async (request, reply) => {
+    const { category_id } = request.params;
+    const { category_name, img_url, attribute_schema } = request.body;
+
+    try {
+        const updated = await Category.findByIdAndUpdate(
+            category_id,
+            {
+                ...(category_name && { name: category_name }),
+                ...(img_url && { image_url: img_url }),
+                ...(attribute_schema && { attribute_schema }),
+                updated_at: Date.now()
+            },
+            { new: true }
+        );
+
+        if (!updated) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+
+        return reply.code(200).send(new ApiResponse(200, updated, "Category updated successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while updating the category"));
+    }
+};
+
+// 5. Delete Category
+const deleteCategory = async (request, reply) => {
+    const { category_id } = request.params;
+    try {
+        const deleted = await Category.findByIdAndDelete(category_id);
+        if (!deleted) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, {}, "Category deleted successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while deleting the category"));
+    }
+};
+
+// 6. Get Stores Count for Category
+const getStoresCount = async (request, reply) => {
+    const { category_id } = request.params;
+    try {
+        const category = await Category.findById(category_id).populate("stores_count");
+        if (!category) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, category.stores_count, "Stores count fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to get store count"));
+    }
+};
+
+// 7. Get Tags Count for Category
+const getTagsCount = async (request, reply) => {
+    const { category_id } = request.params;
+    try {
+        const category = await Category.findById(category_id).populate("tags_count");
+        if (!category) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, category.tags_count, "Tags count fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to get tag count"));
+    }
+};
+
+// 8. Get All Stores of Category
+const getStores = async (request, reply) => {
+    const { category_id } = request.params;
+    try {
+        const category = await Category.findById(category_id).populate("stores");
+        if (!category) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, category.stores, "Stores fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to get stores"));
+    }
+};
+
+// 9. Get All Tags of Category
+const getTags = async (request, reply) => {
+    const { category_id } = request.params;
+    try {
+        const category = await Category.findById(category_id).populate("tags");
+        if (!category) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, category.tags, "Tags fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to get tags"));
+    }
+};
+
+
+// 10. Update only attribute_schema
+const updateCategorySchema = async (request, reply) => {
+    const { category_id } = request.params;
+    const { attribute_schema } = request.body;
+
+    if (!attribute_schema || typeof attribute_schema !== 'object') {
+        return reply.code(400).send(new ApiResponse(400, {}, "Valid attribute_schema object is required"));
+    }
+
+    try {
+        const updated = await Category.findByIdAndUpdate(
+            category_id,
+            { attribute_schema, updated_at: Date.now() },
+            { new: true }
+        );
+
+        if (!updated) {
+            return reply.code(404).send(new ApiResponse(404, {}, "Category not found"));
+        }
+
+        return reply.code(200).send(new ApiResponse(200, updated, "Attribute schema updated successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to update attribute schema"));
+    }
+};
+
+// 11. Search categories by name (case-insensitive)
+const searchCategoriesByName = async (request, reply) => {
+    const { name } = request.query;
+
+    if (!name?.trim()) {
+        return reply.code(400).send(new ApiResponse(400, {}, "Search query is required"));
+    }
+
+    try {
+        const categories = await Category.find({
+            name: { $regex: name, $options: "i" }
+        });
+
+        if (!categories.length) {
+            return reply.code(404).send(new ApiResponse(404, [], "No categories matched your search"));
+        }
+
+        return reply.code(200).send(new ApiResponse(200, categories, "Categories fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Failed to search categories"));
+    }
+};
+
+export {
+    addCategory,
+    getAllCategories,
+    getCategoryById,
+    updateCategory,
+    deleteCategory,
+    getStoresCount,
+    getTagsCount,
+    getStores,
+    getTags,
+    updateCategorySchema,
+    searchCategoriesByName,
+
+};
+
+
+
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
+import { HeroSection } from "../model/homepage.model.js";
+
+
+const get_hero_section = async (request, reply) => {
+    // This function fetch all the hero textLinks from the current store
+    const { storeId } = request.body;
+
+    try {
+        const hero_items = await HeroSection.find({ store_id: storeId })
+            .select("image_url nav_links -_id")
+
+        if (!hero_items.length) {
+            return reply.code(404).send(new ApiResponse(404, [], "No active stores found"));
+        }
+
+        return reply.code(200).send(new ApiResponse(200, hero_items, "Hero text links fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching active stores"));
+    }
+}
+
+const add_hero_section = async (request, reply) => {
+    const { storeId, image_url, nav_links } = request.body;
+
+    if (!storeId?.trim() || !image_url?.trim()) {
+        return reply.code(400).send(new ApiResponse(400, {}, "All fields are required"));
+    }
+
+    try {
+        const heroSection = await HeroSection.create({
+            store_id: storeId,
+            image_url,
+            nav_links: nav_links || "",
+            title: ""
+        });
+
+        return reply.code(201).send(new ApiResponse(201, heroSection, "Hero section added successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while adding the hero section"));
+    }
+}
+
+const get_trending_category = async (request, reply) => {
+    
+}
+
+export {
+    get_hero_section,
+    add_hero_section
+};
+
+
+import { ApiError } from "../utils/ApiError.js";
+import { Role } from "../model/role.model.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+
+
+const addRole = async (request, reply) => {
+    const { role_name } = request.body;
+    if (!role_name?.trim()) {
+        return reply.code(400).send(new ApiResponse(400, {}, "Role name is required"));
+    }
+    try {
+        const role = await Role.create({ name: role_name });
+        return reply.code(201).send(new ApiResponse(201, role, "Role added successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while adding the role"));
+    }
+}
+
+const getAllRoles = async (request, reply) => {
+    const roles = await Role.find({});
+    if (!roles || roles.length === 0) {
+        return { status: 404, message: "No roles found" };
+    }
+    return reply.code(200).send(new ApiResponse(200, roles, "Roles fetched successfully"));
+}
+
+const getRoleById = () => {
+
+}
+export {
+    addRole,
+    getAllRoles,
+    getRoleById
+}
+
+import { Store } from "../model/store.model.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+
+const addStore = async (request, reply) => {
+    const { store_name, domain, category_id, config } = request.body;
+
+    if (!store_name?.trim() || !category_id?.trim()) {
+        return reply.code(400).send(new ApiResponse(400, {}, "All fields are required"));
+    }
+
+    try {
+        const store = await Store.create({
+            name: store_name,
+            domain,
+            category_id,
+            is_active: true,
+            config
+        });
+
+        return reply.code(201).send(new ApiResponse(201, store, "Store added successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while adding the store"));
+    }
+}
+
+const get_hero_links = async (request, reply) => {
+    // This function fetch all the hero textLinks from the current store
+    const { storeId } = request.body; // Assuming store_id is set in the request context
+
+    try {
+        const stores = await Store.find({ _id: storeId })
+            .select("config -_id")
+
+        if (!stores.length) {
+            return reply.code(404).send(new ApiResponse(404, [], "No active stores found"));
+        }
+
+        return reply.code(200).send(new ApiResponse(200, stores[0].config.hero_top_links, "Hero text links fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching active stores"));
+    }
+}
+
+const get_all_stores = async (request, reply) => {
+    try {
+        const stores = await Store.find({ is_active: true })
+            .select("name domain category_id config -_id")
+            .populate("category_id", "name -_id");
+        if (!stores.length) {
+            return reply.code(404).send(new ApiResponse(404, [], "No active stores found"));
+        }
+        return reply.code(200).send(new ApiResponse(200, stores, "Active stores fetched successfully"));
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching active stores"));
+    }
+}
+
+export {
+    addStore, get_hero_links, get_all_stores
+}
+
+
+import { ApiError } from "../utils/ApiError.js";
+import { User } from "../model/user.model.js";
+import Jwt from "jsonwebtoken";
+import { ApiResponse } from "../utils/ApiResponse.js";
+
+
+// 🔐 Generate Tokens
+const generateAccessAndRefereshTokens = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    console.log("Error generating tokens:", error);
+
+    throw new ApiError(
+      500,
+      "Something went wrong while generating refresh and access token"
+    );
+  }
+};
+
+// 📝 Register User
+const registerUser = async (request, reply) => {
+  try {
+    const { email, username, name, phone_number, password, role_id, store_id } = request.body;
+
+    if (!username?.trim() || !password?.trim() || !email?.trim(), !name?.trim(), !store_id) {
+      return reply.code(400).send(new ApiResponse(400, {}, "All fields are required"));
+    }
+
+    const existedUser = await User.findOne({ $or: [{ phone_number }, { email }] });
+
+    if (existedUser) {
+      return reply.code(409).send(
+        new ApiResponse(409, {}, "Username or email already exists")
+      );
+    }
+
+    const user = await User.create({
+      email,
+      password,
+      name: username,
+      store_id,
+      role_id,
+      phone_number
+    });
+
+    const createdUser = await User.findById(user._id).select("-password -refreshToken");
+
+    if (!createdUser) {
+      throw new ApiError(500, "Something went wrong while registering the user");
+    }
+
+    return reply.code(201).send(
+      new ApiResponse(200, createdUser, "User registered successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(new ApiResponse(500, {}, err.message));
+  }
+};
+
+// 🔓 Login User
+const loginUser = async (request, reply) => {
+  try {
+    const { email, username, password } = request.body;
+
+    if (!username && !email) {
+      return reply.code(400).send(
+        new ApiResponse(400, {}, "Username or email is required")
+      );
+    }
+
+    const user = await User.findOne({
+      $or: [{ username }, { email }]
+    }).select("+password");
+
+    if (!user) {
+      return reply.code(404).send(new ApiResponse(404, {}, "User not found"));
+    }
+    console.log("User found:", user);
+
+    const isPasswordValid = await user.isPasswordCorrect(password);
+    if (!isPasswordValid) {
+      return reply.code(401).send(new ApiResponse(401, {}, "Invalid password"));
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);
+    const { _id, name, email: userEmail } = user;
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: true,
+      path: "/"
+    };
+
+    reply
+      .setCookie("accessToken", accessToken, cookieOptions)
+      .setCookie("refreshToken", refreshToken, cookieOptions)
+      .code(200)
+      .send(
+        new ApiResponse(
+          200,
+          {
+            user: {
+              _id,
+              name,
+              email: userEmail,
+              phone_number: user.phone_number,
+              role_id: user.role_id,
+              store_id: user.store_id,
+              phone_number: user.phone_number,
+              profile_url: user.profile_url
+
+            },
+            accessToken,
+            refreshToken
+          },
+          "User logged in successfully"
+        )
+      );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(new ApiResponse(500, {}, err.message));
+  }
+};
+
+// 🚪 Logout
+const logoutUser = async (request, reply) => {
+  try {
+    await User.findByIdAndUpdate(request.user._id, {
+      $unset: { refreshToken: 1 }
+    });
+
+    const options = { httpOnly: true, secure: true, path: "/" };
+
+    reply
+      .clearCookie("accessToken", options)
+      .clearCookie("refreshToken", options)
+      .code(200)
+      .send(new ApiResponse(200, {}, "User logged out"));
+  } catch (err) {
+    request.log.error(err);
+    reply.code(err.statusCode || 500).send(new ApiResponse(500, {}, err.message));
+  }
+};
+
+// ♻️ Refresh Access Token
+const refreshAccessToken = async (request, reply) => {
+  try {
+    const inComingRefreshToken =
+      request.cookies.refreshToken || request.body.refreshToken || null;
+
+    if (!inComingRefreshToken) {
+      throw new ApiError(401, "Unauthorized request");
+    }
+
+    const decodedToken = Jwt.verify(
+      inComingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
+
+    const user = await User.findById(decodedToken?._id);
+    if (!user || inComingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(401, "Invalid Refresh Token");
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await generateAccessAndRefereshTokens(user._id);
+
+    const options = { httpOnly: true, secure: true, path: "/" };
+
+    reply
+      .setCookie("accessToken", accessToken, options)
+      .setCookie("refreshToken", newRefreshToken, options)
+      .code(200)
+      .send(
+        new ApiResponse(
+          200,
+          {
+            user_id: user._id,
+            accessToken,
+            newRefreshToken
+          },
+          "Access token refreshed"
+        )
+      );
+  } catch (err) {
+    request.log.error(err);
+    reply.code(err.statusCode || 500).send(new ApiResponse(500, {}, err.message));
+  }
+};
+
+
+const updateUserInfo = async (request, reply) => {
+  const { user_id } = request.body;
+  if (!user_id) {
+    throw new ApiError(400, "user_id can't be empty");
+  }
+};
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  updateUserInfo
+};
