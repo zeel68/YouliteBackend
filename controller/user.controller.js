@@ -226,6 +226,261 @@ const getUserProfile = async (request, reply) => {
     return reply.code(err.statusCode || 500).send(new ApiResponse(500, {}, err.message));
   }
 };
+// 🛠 Utility: Get current store ID from request
+const getCurrentStoreId = (request) => {
+  if (!request.user || !request.user.store_id) {
+    throw new ApiError(403, "Tenant context missing");
+  }
+  return request.user.store_id;
+};
+
+// 📦 Get Orders by User ID
+const getOrdersByUserId = async (request, reply) => {
+  try {
+    const { user_id } = request.params;
+    const storeId = getCurrentStoreId(request);
+
+    if (!user_id) {
+      throw new ApiError(400, "user_id is required");
+    }
+
+    const orders = await Order.find({
+      user_id,
+      store_id: storeId
+    })
+      .sort({ created_at: -1 })
+      .populate('items.product_id', 'name price')
+      .populate('items.variant_id', 'name price');
+
+    return reply.code(200).send(
+      new ApiResponse(200, orders, "Orders fetched successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 📬 Get Order by ID for User
+const getOrderByUserId = async (request, reply) => {
+  try {
+    const { order_id } = request.params;
+    const storeId = getCurrentStoreId(request);
+    const userId = request.user._id;
+
+    if (!order_id) {
+      throw new ApiError(400, "order_id is required");
+    }
+
+    const order = await Order.findOne({
+      _id: order_id,
+      user_id: userId,
+      store_id: storeId
+    })
+      .populate('items.product_id', 'name price image_url')
+      .populate('items.variant_id', 'name price')
+      .populate('store_details', 'name domain');
+
+    if (!order) {
+      throw new ApiError(404, "Order not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, order, "Order details fetched successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🖼 Update User Profile
+const updateUserProfile = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+    const { profile_url } = request.body;
+
+    if (!profile_url) {
+      throw new ApiError(400, "profile_url is required");
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, store_id: storeId },
+      { profile_url },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, updatedUser, "Profile updated successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🔒 Change User Password
+const changeUserPassword = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+    const { oldPassword, newPassword } = request.body;
+
+    if (!oldPassword || !newPassword) {
+      throw new ApiError(400, "Both old and new passwords are required");
+    }
+
+    const user = await User.findById(userId).select("+password");
+    if (!user || !user.store_id.equals(storeId)) {
+      throw new ApiError(404, "User not found in this store");
+    }
+
+    const isPasswordValid = await user.isPasswordCorrect(oldPassword);
+    if (!isPasswordValid) {
+      throw new ApiError(401, "Invalid old password");
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return reply.code(200).send(
+      new ApiResponse(200, {}, "Password changed successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🏠 Add User Address
+const addUserAddress = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+    const { address } = request.body;
+
+    if (!address) {
+      throw new ApiError(400, "Address is required");
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, store_id: storeId },
+      { $set: { address } },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, updatedUser, "Address added successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🏠 Get User Addresses
+const getUserAddresses = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+
+    const user = await User.findOne(
+      { _id: userId, store_id: storeId },
+      'address'
+    );
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, { address: user.address }, "Address fetched successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🏠 Update User Address
+const updateUserAddress = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+    const { address } = request.body;
+
+    if (!address) {
+      throw new ApiError(400, "Address is required");
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, store_id: storeId },
+      { address },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, updatedUser, "Address updated successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
+
+// 🗑 Delete User Address
+const deleteUserAddress = async (request, reply) => {
+  try {
+    const userId = request.user._id;
+    const storeId = getCurrentStoreId(request);
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: userId, store_id: storeId },
+      { $unset: { address: "" } },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return reply.code(200).send(
+      new ApiResponse(200, updatedUser, "Address deleted successfully")
+    );
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(err.statusCode || 500).send(
+      new ApiResponse(err.statusCode || 500, {}, err.message)
+    );
+  }
+};
 
 export {
   registerUser,
@@ -233,5 +488,13 @@ export {
   logoutUser,
   refreshAccessToken,
   updateUserInfo,
-  getUserProfile
+  getUserProfile,
+  getOrdersByUserId,
+  getOrderByUserId,
+  updateUserProfile,
+  changeUserPassword,
+  addUserAddress,
+  getUserAddresses,
+  updateUserAddress,
+  deleteUserAddress,
 };

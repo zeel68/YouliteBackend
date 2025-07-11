@@ -47,18 +47,42 @@ const get_hero_links = async (request, reply) => {
 
 const get_all_stores = async (request, reply) => {
     try {
-        const stores = await Store.find({ is_active: true })
-            .select("name domain category_id config _id")
-            .populate("category_id", "name -_id");
+        const page = parseInt(request.query.page) || 1; // Default to page 1
+        const limit = parseInt(request.query.limit) || 10; // Default to 10 items per page
+        const skip = (page - 1) * limit;
+
+        const [stores, total] = await Promise.all([
+            Store.find({ is_active: true })
+                .select("name domain category_id config _id")
+                .populate("category_id", "name ")
+                .skip(skip)
+                .limit(limit),
+            Store.countDocuments({ is_active: true }),
+        ]);
+
         if (!stores.length) {
             return reply.code(404).send(new ApiResponse(404, [], "No active stores found"));
         }
-        return reply.code(200).send(new ApiResponse(200, stores, "Active stores fetched successfully"));
+
+        const totalPages = Math.ceil(total / limit);
+
+        return reply.code(200).send(
+            new ApiResponse(200, {
+                data: stores,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages,
+                }
+            }, "Active stores fetched successfully")
+        );
     } catch (error) {
         request.log.error(error);
         return reply.code(500).send(new ApiResponse(500, {}, "Something went wrong while fetching active stores"));
     }
-}
+};
+
 
 const getStoreById = async (request, reply) => {
     const { id } = request.params;

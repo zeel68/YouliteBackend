@@ -70,6 +70,12 @@ const storeSchema = new Schema({
         required: true,
         index: true
     },
+    users: {
+        type: {
+            email: String,
+            password: String
+        }
+    },
     domain: {
         type: String,
         required: true,

@@ -14,7 +14,12 @@ import categoryRoutes from './route/category.route.js';
 import storeRouter from './route/store.route.js';
 import homepageRouter from './route/homepage.route.js';
 import productRoutes from './route/product.route.js';
+import multipart from '@fastify/multipart';
+import multer from 'fastify-multer';
+import axios from 'axios';
+import fs from "fs";
 dotenv.config({ path: './.env' });
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,11 +37,18 @@ await fastify.register(cookie);
 // Parse JSON and URL-encoded (Fastify handles JSON by default)
 fastify.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, fastify.getDefaultJsonParser('ignore', 'ignore'));
 
+// await fastify.register(multer.contentParser);
 
+fastify.register(multipart);
 // Declare a test route
 fastify.get('/', async (request, reply) => {
   return { message: 'Hello world' };
 });
+
+
+
+
+
 
 // Register user routes
 await fastify.register(userRouter, { prefix: '/api/v1/users' });
